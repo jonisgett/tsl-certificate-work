@@ -39,19 +39,23 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 
 // SearchData holds data to pass to the results template
 type SearchData struct {
-	Domain       string
-	Certificates []services.Certificate
-	Error        string
+	Domain     string
+	NotBefore  string
+	Issuers    []services.IssuerGroup
+	TotalCerts int
+	Error      string
 }
 
 // searchHandler handles certificate lookups
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the domain from the query string
+	// Get the domain and date filter from the query string
 	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+	notBefore := strings.TrimSpace(r.URL.Query().Get("notBefore"))
 
 	// Prepare data for the template
 	data := SearchData{
-		Domain: domain,
+		Domain:    domain,
+		NotBefore: notBefore,
 	}
 
 	// Validate domain
@@ -63,7 +67,15 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			data.Error = err.Error()
 		} else {
-			data.Certificates = certs
+			// Filter by date if provided
+			if notBefore != "" {
+				certs = services.FilterByNotBefore(certs, notBefore)
+			}
+			// Group certificates by serial number
+			groups := services.GroupCertificates(certs)
+			// Then group by issuer
+			data.Issuers = services.GroupByIssuer(groups)
+			data.TotalCerts = len(groups)
 		}
 	}
 

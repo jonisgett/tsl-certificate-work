@@ -35,39 +35,183 @@
         .back-link:hover {
             text-decoration: underline;
         }
+        .controls {
+            max-width: 1000px;
+            margin: 0 auto 15px;
+        }
+        .controls button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        .controls button:hover {
+            background: #5a6268;
+        }
         .results {
             max-width: 1000px;
             margin: 0 auto;
         }
-        .cert-card {
+        /* Issuer Section Styles */
+        .issuer-section {
+            margin-bottom: 30px;
+        }
+        .issuer-header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .issuer-header:hover {
+            background: #34495e;
+        }
+        .issuer-section.collapsed .issuer-header {
+            border-radius: 8px;
+        }
+        .issuer-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toggle-icon {
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+        .issuer-section.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+        .issuer-cert-count {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+        .issuer-certs {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+        }
+        .issuer-section.collapsed .issuer-certs {
+            max-height: 0;
+            padding: 0 15px;
+        }
+        /* Certificate Group Styles */
+        .cert-group {
             background: white;
             border-radius: 8px;
-            padding: 20px;
             margin-bottom: 15px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
-        .cert-card h3 {
-            color: #333;
-            margin-bottom: 10px;
+        .cert-group:last-child {
+            margin-bottom: 0;
+        }
+        .group-header {
+            background: #007bff;
+            color: white;
+            padding: 12px 20px;
+        }
+        .group-header h3 {
+            font-size: 16px;
+            margin-bottom: 0;
             word-break: break-all;
         }
-        .cert-field {
-            display: flex;
-            padding: 8px 0;
+        .group-info {
+            padding: 15px 20px;
+            background: #f8f9fa;
             border-bottom: 1px solid #eee;
         }
-        .cert-field:last-child {
-            border-bottom: none;
+        .group-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
         }
-        .cert-label {
-            font-weight: 600;
-            color: #555;
-            width: 150px;
-            flex-shrink: 0;
+        .info-item {
+            display: flex;
+            flex-direction: column;
         }
-        .cert-value {
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+        .info-value {
             color: #333;
             word-break: break-all;
+            font-size: 14px;
+        }
+        .entries-section {
+            padding: 15px 20px;
+        }
+        .entries-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .entry-count {
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        .entry {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .entry:last-child {
+            margin-bottom: 0;
+        }
+        .entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .entry-type {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+        }
+        .entry-type.precert {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .entry-type.leaf {
+            background: #d4edda;
+            color: #155724;
+        }
+        .entry-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .entry-field {
+            font-size: 13px;
+        }
+        .entry-field .label {
+            color: #666;
+        }
+        .entry-field .value {
+            color: #333;
+            font-family: monospace;
         }
         .no-results {
             background: white;
@@ -91,41 +235,79 @@
     <div class="header">
         <a href="/" class="back-link">← Back to search</a>
         <h1>Certificates for {{.Domain}}</h1>
-        <p>Found {{len .Certificates}} certificate(s)</p>
+        <p>Found {{.TotalCerts}} unique certificate(s) from {{len .Issuers}} issuer(s)</p>
     </div>
 
     {{if .Error}}
         <div class="error">
             <strong>Error:</strong> {{.Error}}
         </div>
-    {{else if .Certificates}}
+    {{else if .Issuers}}
+        <div class="controls">
+            <button onclick="expandAll()">Expand All</button>
+            <button onclick="collapseAll()">Collapse All</button>
+        </div>
         <div class="results">
-            {{range .Certificates}}
-            <div class="cert-card">
-                <h3>{{.CommonName}}</h3>
-                <div class="cert-field">
-                    <span class="cert-label">Issuer</span>
-                    <span class="cert-value">{{.IssuerName}}</span>
+            {{range .Issuers}}
+            <div class="issuer-section">
+                <div class="issuer-header" onclick="toggleSection(this)">
+                    <h2><span class="toggle-icon">▼</span> {{.DisplayName}}</h2>
+                    <span class="issuer-cert-count">{{len .Certificates}} certificate(s)</span>
                 </div>
-                <div class="cert-field">
-                    <span class="cert-label">Names</span>
-                    <span class="cert-value">{{.NameValue}}</span>
-                </div>
-                <div class="cert-field">
-                    <span class="cert-label">Valid From</span>
-                    <span class="cert-value">{{.NotBefore}}</span>
-                </div>
-                <div class="cert-field">
-                    <span class="cert-label">Valid Until</span>
-                    <span class="cert-value">{{.NotAfter}}</span>
-                </div>
-                <div class="cert-field">
-                    <span class="cert-label">Serial Number</span>
-                    <span class="cert-value">{{.SerialNumber}}</span>
-                </div>
-                <div class="cert-field">
-                    <span class="cert-label">Logged At</span>
-                    <span class="cert-value">{{.EntryTimestamp}}</span>
+                <div class="issuer-certs">
+                    {{range .Certificates}}
+                    <div class="cert-group">
+                        <div class="group-header">
+                            <h3>{{.CommonName}}</h3>
+                        </div>
+                        <div class="group-info">
+                            <div class="group-info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Valid From</span>
+                                    <span class="info-value">{{.NotBefore}}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Valid Until</span>
+                                    <span class="info-value">{{.NotAfter}}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Serial Number</span>
+                                    <span class="info-value">{{.SerialNumber}}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="entries-section">
+                            <div class="entries-title">
+                                CT Log Entries<span class="entry-count">{{len .Entries}}</span>
+                            </div>
+                            {{range .Entries}}
+                            <div class="entry">
+                                <div class="entry-header">
+                                    {{if eq .EntryType "Precertificate"}}
+                                    <span class="entry-type precert">Precertificate</span>
+                                    {{else}}
+                                    <span class="entry-type leaf">Leaf Certificate</span>
+                                    {{end}}
+                                    <span class="entry-field">
+                                        <span class="label">ID:</span>
+                                        <span class="value">{{.ID}}</span>
+                                    </span>
+                                </div>
+                                <div class="entry-row">
+                                    <div class="entry-field">
+                                        <span class="label">Logged:</span>
+                                        <span class="value">{{.EntryTimestamp}}</span>
+                                    </div>
+                                    <div class="entry-field">
+                                        <span class="label">Names:</span>
+                                        <span class="value">{{.NameValue}}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
                 </div>
             </div>
             {{end}}
@@ -135,5 +317,27 @@
             No certificates found for this domain.
         </div>
     {{end}}
+
+    <script>
+        // Toggle a single issuer section
+        function toggleSection(header) {
+            const section = header.closest('.issuer-section');
+            section.classList.toggle('collapsed');
+        }
+
+        // Expand all sections
+        function expandAll() {
+            document.querySelectorAll('.issuer-section').forEach(section => {
+                section.classList.remove('collapsed');
+            });
+        }
+
+        // Collapse all sections
+        function collapseAll() {
+            document.querySelectorAll('.issuer-section').forEach(section => {
+                section.classList.add('collapsed');
+            });
+        }
+    </script>
 </body>
 </html>

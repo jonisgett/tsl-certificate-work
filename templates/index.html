@@ -37,7 +37,32 @@
         }
         form {
             display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .search-row {
+            display: flex;
             gap: 10px;
+        }
+        .date-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        .date-row label {
+            white-space: nowrap;
+        }
+        .date-row input[type="date"] {
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+        }
+        .date-row input[type="date"]:focus {
+            border-color: #007bff;
         }
         input[type="text"] {
             flex: 1;
@@ -58,9 +83,38 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         button:hover {
             background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        /* Loading spinner */
+        .spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-message {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            color: #0056b3;
         }
     </style>
 </head>
@@ -68,10 +122,37 @@
     <div class="container">
         <h1>Certificate Transparency Viewer</h1>
         <p>Enter a domain to view its SSL/TLS certificates</p>
-        <form action="/search" method="GET">
-            <input type="text" name="domain" placeholder="example.com" required>
-            <button type="submit">Search</button>
+        <form action="/search" method="GET" onsubmit="showLoading()">
+            <div class="search-row">
+                <input type="text" name="domain" placeholder="example.com" required id="domainInput">
+                <button type="submit" id="searchBtn">
+                    <span class="spinner" id="spinner"></span>
+                    <span id="btnText">Search</span>
+                </button>
+            </div>
+            <div class="date-row">
+                <label for="notBefore">Only show certificates issued after:</label>
+                <input type="date" name="notBefore" id="notBefore">
+            </div>
         </form>
+        <div class="loading-message" id="loadingMessage">
+            Searching certificate transparency logs... This may take up to 2 minutes for some domains.
+        </div>
     </div>
+
+    <script>
+        function showLoading() {
+            // Show spinner and loading message immediately
+            document.getElementById('spinner').style.display = 'block';
+            document.getElementById('btnText').textContent = 'Searching...';
+            document.getElementById('loadingMessage').style.display = 'block';
+
+            // Disable inputs AFTER a tiny delay so the form values are captured first
+            setTimeout(function() {
+                document.getElementById('searchBtn').disabled = true;
+                document.getElementById('domainInput').disabled = true;
+            }, 10);
+        }
+    </script>
 </body>
 </html>
