@@ -4,30 +4,41 @@
 
 A web application that allows users to search for SSL/TLS certificates issued for a domain by querying Certificate Transparency (CT) logs. This is a learning project to build foundational knowledge for a future certificate fraud detection product.
 
+**Live Site:** https://certs.jonisgett.dev
+
 ## Learning Goals
 
 1. **Go backend development** - HTTP servers, routing, API design, data processing
-2. **Web design** - HTML, CSS, JavaScript fundamentals
-3. **Certificate Transparency** - Understanding CT logs, certificate structures, and security implications
-4. **Cloud hosting** - Deploying applications to a VPS with Cloudflare as a proxy
+2. **TypeScript/Cloudflare Workers** - Serverless edge computing, modern JavaScript
+3. **Web design** - HTML, CSS, JavaScript fundamentals
+4. **Certificate Transparency** - Understanding CT logs, certificate structures, and security implications
+5. **Cloud hosting** - Deploying applications to Cloudflare Workers
 
 ## Architecture
 
-**Single Server Architecture (Option B)**
+**Cloudflare Workers (Current - Live)**
 
 ```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   User's        │      │   Cloudflare    │      │   VPS           │
-│   Browser       │─────▶│   (proxy/CDN)   │─────▶│                 │
-│                 │      │                 │      │   Go Server     │
-└─────────────────┘      └─────────────────┘      │   (serves both  │
-                                                  │   HTML + API)   │
-                                                  └─────────────────┘
+┌─────────────────┐      ┌─────────────────────────────────────┐
+│   User's        │      │   Cloudflare Edge Network           │
+│   Browser       │─────▶│   (300+ locations worldwide)        │
+│                 │      │                                     │
+└─────────────────┘      │   TypeScript Worker                 │
+                         │   - Handles HTTP requests           │
+                         │   - Fetches from crt.sh             │
+                         │   - Returns HTML responses          │
+                         └─────────────────────────────────────┘
 ```
 
-- One Go server handles everything: serves HTML pages AND processes certificate lookups
-- Cloudflare sits in front for security/caching (added later during deployment)
-- Development happens locally first, deployment to VPS later
+**Go Version (Local Development)**
+
+```
+┌─────────────────┐      ┌─────────────────┐
+│   User's        │      │   localhost:8080│
+│   Browser       │─────▶│                 │
+│                 │      │   Go Server     │
+└─────────────────┘      └─────────────────┘
+```
 
 ## Current Features (Implemented)
 
@@ -36,8 +47,9 @@ A web application that allows users to search for SSL/TLS certificates issued fo
    - **Issuer** (e.g., "Let's Encrypt (R3)") - collapsible sections
    - **Certificate** - sorted by expiration date (newest first)
    - **CT Log Entries** - labeled as "Precertificate" or "Leaf Certificate"
-3. **Error handling** - Friendly messages for invalid domains or API failures
-4. **UI Features**:
+3. **Date filter** - Filter certificates by "issued after" date
+4. **Error handling** - Friendly messages for invalid domains or API failures
+5. **UI Features**:
    - Collapsible issuer sections (click to expand/collapse)
    - "Expand All" / "Collapse All" buttons
    - Loading spinner during search
@@ -45,10 +57,19 @@ A web application that allows users to search for SSL/TLS certificates issued fo
 
 ## Tech Stack
 
+### Production (Cloudflare Workers)
+- **Runtime**: Cloudflare Workers (TypeScript)
+- **Framework**: None (vanilla TypeScript)
+- **Deployment**: Wrangler CLI
+- **Domain**: certs.jonisgett.dev
+
+### Development (Go)
 - **Backend**: Go (Golang) 1.23.4
 - **Frontend**: HTML, CSS, vanilla JavaScript
+- **Templates**: Go html/template
+
+### Shared
 - **Data Source**: crt.sh (free Certificate Transparency log search API)
-- **Deployment**: VPS (Fly.io, Render, or similar) + Cloudflare proxy (pending)
 
 ## API Data Source
 
@@ -63,19 +84,26 @@ A web application that allows users to search for SSL/TLS certificates issued fo
 
 ```
 tsl-certificates-work/
-├── claude.md              # This file - project documentation
-├── .gitignore             # Git ignore rules
-├── go.mod                 # Go module definition
-├── main.go                # Application entry point & HTTP handlers
-├── handlers/              # (empty - handlers in main.go for now)
+├── claude.md                    # This file - project documentation
+├── .gitignore                   # Git ignore rules
+│
+├── # Go Version (local development)
+├── go.mod                       # Go module definition
+├── main.go                      # Go HTTP handlers
 ├── services/
-│   └── certificates.go    # Certificate fetching, grouping, and labeling
+│   └── certificates.go          # Go certificate fetching & grouping
 ├── templates/
-│   ├── index.html         # Homepage with search form
-│   └── results.html       # Certificate results display
-└── static/                # (empty - CSS/JS inline for now)
-    ├── css/
-    └── js/
+│   ├── index.html               # Go homepage template
+│   └── results.html             # Go results template
+│
+└── workers/                     # TypeScript Version (LIVE at certs.jonisgett.dev)
+    ├── src/
+    │   ├── index.ts             # HTTP request routing
+    │   ├── certificates.ts      # Certificate fetching & grouping
+    │   └── templates.ts         # HTML template functions
+    ├── wrangler.jsonc           # Cloudflare Workers config
+    ├── package.json             # Node.js dependencies
+    └── tsconfig.json            # TypeScript config
 ```
 
 ## Key Concepts Learned
@@ -90,12 +118,27 @@ tsl-certificates-work/
 - **HTTP server** - `http.HandleFunc`, `http.ListenAndServe`
 - **Templates** - `html/template` for safe HTML rendering
 
+### TypeScript Concepts
+- **Interfaces** - Type definitions (`interface Certificate { }`)
+- **async/await** - Asynchronous programming
+- **Modules** - ES6 imports/exports
+- **Map** - JavaScript Map for grouping (`new Map<string, T>()`)
+- **Array methods** - `.map()`, `.filter()`, `.sort()`, `.forEach()`
+- **Template literals** - Multiline strings with `${variable}` interpolation
+
+### Cloudflare Workers Concepts
+- **Edge computing** - Code runs in 300+ data centers worldwide
+- **fetch handler** - Entry point for all HTTP requests
+- **Response object** - Creating HTTP responses
+- **Wrangler** - CLI tool for development and deployment
+- **Custom domains** - Routing traffic to Workers
+
 ### Web Concepts
-- **HTML templates** - Go's template syntax (`{{.Field}}`, `{{range}}`, `{{if}}`)
+- **HTML templates** - Go's template syntax vs TypeScript template literals
 - **CSS** - Flexbox, Grid, styling
 - **JavaScript** - DOM manipulation, event handling
 - **Form submission** - GET requests with query parameters
-- **XSS prevention** - Using `html/template` for automatic escaping
+- **XSS prevention** - HTML escaping in both Go and TypeScript
 
 ### Certificate Transparency Concepts
 - **Precertificate vs Leaf Certificate** - Precerts are logged before final issuance
@@ -134,25 +177,41 @@ tsl-certificates-work/
 - [x] Add error handling and loading states
 - [x] Test with various domains
 
-### Phase 5: Deployment - PENDING
-- [ ] Choose and set up VPS (Fly.io recommended)
-- [ ] Deploy Go application
-- [ ] Configure Cloudflare as proxy
-- [ ] Set up custom domain (optional)
+### Phase 5: Deployment - COMPLETE
+- [x] Create Cloudflare Workers project
+- [x] Port Go code to TypeScript
+- [x] Configure custom domain (certs.jonisgett.dev)
+- [x] Deploy to Cloudflare Workers
 
 ## Useful Commands
 
+### Go (Local Development)
 ```bash
-# Run the application locally
+# Run the Go application locally
 go run main.go
 
 # Build for production
 go build -o certificate-viewer
+```
 
-# Run tests
-go test ./...
+### Cloudflare Workers
+```bash
+# Navigate to workers directory
+cd workers
 
-# Git commands
+# Start local dev server
+npx wrangler dev
+
+# Deploy to production
+export CLOUDFLARE_API_TOKEN="your-token"
+npx wrangler deploy
+
+# View live logs
+npx wrangler tail
+```
+
+### Git
+```bash
 git add . && git commit -m "message"
 git push origin main
 ```
@@ -160,10 +219,11 @@ git push origin main
 ## Resources
 
 - [Go Documentation](https://go.dev/doc/)
+- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
+- [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
 - [Certificate Transparency Overview](https://certificate.transparency.dev/)
 - [crt.sh](https://crt.sh/)
-- [Cloudflare Pages Docs](https://developers.cloudflare.com/pages/)
-- [Fly.io Go Guide](https://fly.io/docs/languages-and-frameworks/golang/)
 
 ## Notes
 
@@ -175,13 +235,13 @@ git push origin main
 
 ## Future Improvements
 
-- [ ] Add date range filter (e.g., last 3 months only)
 - [ ] Add pagination for large result sets
 - [ ] Strip "www." from domain input automatically
 - [ ] Add ability to view full certificate details
 - [ ] Export results to CSV/JSON
 - [ ] Add fraud detection indicators (for friend's project)
+- [ ] Add caching with Cloudflare KV storage
 
 ## Current Status
 
-**Phases 1-4 Complete** - Working local application with full feature set. Ready for deployment (Phase 5).
+**All Phases Complete** - Application is live at https://certs.jonisgett.dev

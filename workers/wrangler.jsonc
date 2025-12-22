@@ -1,0 +1,15 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "certificate-viewer",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-12-21",
+	"observability": {
+		"enabled": true
+	},
+	"routes": [
+		{
+			"pattern": "certs.jonisgett.dev",
+			"custom_domain": true
+		}
+	]
+}
