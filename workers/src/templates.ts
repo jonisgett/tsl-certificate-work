@@ -1,4 +1,4 @@
-import { IssuerGroup } from './certificates';
+import { IssuerGroup, CTSentryIssuerGroup, CTSentryCertGroup, CTSentryCertRecord } from './certificates';
 
 // Homepage HTML - the search form
 export function renderHomepage(): string {
@@ -375,7 +375,224 @@ function getResultsStyles(): string {
     .entry-field .value { color: #333; font-family: monospace; }
     .no-results { background: white; padding: 40px; text-align: center; border-radius: 8px; color: #666; }
     .error { background: #fee; border: 1px solid #fcc; color: #c00; padding: 20px; border-radius: 8px; max-width: 1000px; margin: 0 auto; }
+    .truncation-warning { background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 15px 20px; border-radius: 8px; max-width: 1000px; margin: 0 auto 20px; }
+    .key-info { display: inline-flex; align-items: center; gap: 5px; background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .dns-names { display: flex; flex-wrap: wrap; gap: 5px; }
+    .dns-name { background: #e7f3ff; padding: 2px 8px; border-radius: 4px; font-size: 13px; color: #0056b3; }
   `;
+}
+
+// =============================================================================
+// CTSentry Template Functions (NEW)
+// =============================================================================
+
+// Main results page for CTSentry data
+export function renderCTSentryResults(
+  domain: string,
+  issuers: CTSentryIssuerGroup[],
+  totalCerts: number,
+  truncated: boolean = false,
+  error?: string
+): string {
+  // Build the error HTML if there's an error
+  if (error) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results for ${escapeHtml(domain)}</title>
+    <style>${getResultsStyles()}</style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="back-link">← Back to search</a>
+        <h1>Certificates for ${escapeHtml(domain)}</h1>
+    </div>
+    <div class="error">
+        <strong>Error:</strong> ${escapeHtml(error)}
+    </div>
+</body>
+</html>`;
+  }
+
+  // Build the truncation warning if results were cut off
+  const truncationWarning = truncated
+    ? `<div class="truncation-warning">
+        <strong>Note:</strong> Results were limited to 9,999 entries. There may be more certificates for this domain.
+       </div>`
+    : '';
+
+  // Build the results HTML
+  let certificatesHtml = '';
+
+  if (issuers.length === 0) {
+    certificatesHtml = '<div class="no-results">No certificates found for this domain.</div>';
+  } else {
+    certificatesHtml = `
+    <div class="controls">
+        <button onclick="expandAll()">Expand All</button>
+        <button onclick="collapseAll()">Collapse All</button>
+    </div>
+    <div class="results">
+        ${issuers.map(issuer => renderCTSentryIssuerSection(issuer)).join('')}
+    </div>`;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results for ${escapeHtml(domain)}</title>
+    <style>${getResultsStyles()}</style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="back-link">← Back to search</a>
+        <h1>Certificates for ${escapeHtml(domain)}</h1>
+        <p>Found ${totalCerts} unique certificate(s) from ${issuers.length} issuer(s)</p>
+    </div>
+    ${truncationWarning}
+    ${certificatesHtml}
+    <script>
+        function toggleSection(header) {
+            const section = header.closest('.issuer-section');
+            section.classList.toggle('collapsed');
+        }
+        function expandAll() {
+            document.querySelectorAll('.issuer-section').forEach(section => {
+                section.classList.remove('collapsed');
+            });
+        }
+        function collapseAll() {
+            document.querySelectorAll('.issuer-section').forEach(section => {
+                section.classList.add('collapsed');
+            });
+        }
+    </script>
+</body>
+</html>`;
+}
+
+// Render a single issuer section for CTSentry data
+function renderCTSentryIssuerSection(issuer: CTSentryIssuerGroup): string {
+  return `
+    <div class="issuer-section">
+        <div class="issuer-header" onclick="toggleSection(this)">
+            <h2><span class="toggle-icon">▼</span> ${escapeHtml(issuer.displayName)}</h2>
+            <span class="issuer-cert-count">${issuer.certificates.length} certificate(s)</span>
+        </div>
+        <div class="issuer-certs">
+            ${issuer.certificates.map(cert => renderCTSentryCertGroup(cert)).join('')}
+        </div>
+    </div>`;
+}
+
+// Render a single certificate group for CTSentry data
+function renderCTSentryCertGroup(group: CTSentryCertGroup): string {
+  const cert = group.primaryCert.cert!;
+
+  // Format the public key info nicely
+  const keyInfo = cert.public_key
+    ? `${cert.public_key.algorithm || 'Unknown'} ${cert.public_key.size_bits || '?'}-bit`
+    : 'Unknown';
+
+  // Format validity dates nicely
+  const notBefore = formatDate(group.notBefore);
+  const notAfter = formatDate(group.notAfter);
+
+  // Format DNS names as tags
+  const dnsNamesHtml = group.dnsNames.length > 0
+    ? `<div class="dns-names">
+        ${group.dnsNames.slice(0, 5).map(name => `<span class="dns-name">${escapeHtml(name)}</span>`).join('')}
+        ${group.dnsNames.length > 5 ? `<span class="dns-name">+${group.dnsNames.length - 5} more</span>` : ''}
+       </div>`
+    : '<span class="info-value">None</span>';
+
+  return `
+    <div class="cert-group">
+        <div class="group-header">
+            <h3>${escapeHtml(group.commonName)}</h3>
+        </div>
+        <div class="group-info">
+            <div class="group-info-grid">
+                <div class="info-item">
+                    <span class="info-label">Valid From</span>
+                    <span class="info-value">${escapeHtml(notBefore)}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Valid Until</span>
+                    <span class="info-value">${escapeHtml(notAfter)}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Public Key</span>
+                    <span class="key-info">${escapeHtml(keyInfo)}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Serial Number</span>
+                    <span class="info-value">${escapeHtml(cert.serial_number || 'Unknown')}</span>
+                </div>
+            </div>
+            <div class="info-item" style="margin-top: 15px;">
+                <span class="info-label">DNS Names</span>
+                ${dnsNamesHtml}
+            </div>
+        </div>
+        <div class="entries-section">
+            <div class="entries-title">
+                CT Log Entries<span class="entry-count">${group.allEntries.length}</span>
+            </div>
+            ${group.allEntries.map(entry => renderCTSentryEntry(entry)).join('')}
+        </div>
+    </div>`;
+}
+
+// Render a single CT log entry for CTSentry data
+function renderCTSentryEntry(entry: CTSentryCertRecord): string {
+  const isPrecert = entry.meta.is_precert;
+  const logName = entry.meta.log_short_name || 'Unknown log';
+  const timestamp = formatDate(entry.meta.timestamp);
+
+  return `
+    <div class="entry">
+        <div class="entry-header">
+            <span class="entry-type ${isPrecert ? 'precert' : 'leaf'}">${isPrecert ? 'Precertificate' : 'Leaf Certificate'}</span>
+            <span class="entry-field">
+                <span class="label">Log:</span>
+                <span class="value">${escapeHtml(logName)}</span>
+            </span>
+        </div>
+        <div class="entry-row">
+            <div class="entry-field">
+                <span class="label">Logged:</span>
+                <span class="value">${escapeHtml(timestamp)}</span>
+            </div>
+            ${entry.meta.leaf_index !== undefined ? `
+            <div class="entry-field">
+                <span class="label">Index:</span>
+                <span class="value">${entry.meta.leaf_index}</span>
+            </div>
+            ` : ''}
+        </div>
+    </div>`;
+}
+
+// Format an ISO date string nicely
+function formatDate(isoDate: string): string {
+  if (!isoDate) return 'Unknown';
+  try {
+    const date = new Date(isoDate);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return isoDate;
+  }
 }
 
 
