@@ -153,6 +153,17 @@ export function renderHomepage(): string {
                 document.getElementById('domainInput').disabled = true;
             }, 10);
         }
+
+        // Reset form state when navigating back (bfcache restore)
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                document.getElementById('spinner').style.display = 'none';
+                document.getElementById('btnText').textContent = 'Search';
+                document.getElementById('loadingMessage').style.display = 'none';
+                document.getElementById('searchBtn').disabled = false;
+                document.getElementById('domainInput').disabled = false;
+            }
+        });
     </script>
 </body>
 </html>`;

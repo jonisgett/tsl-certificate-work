@@ -13,19 +13,21 @@ A web application that allows users to search for SSL/TLS certificates issued fo
 3. **Web design** - HTML, CSS, JavaScript fundamentals
 4. **Certificate Transparency** - Understanding CT logs, certificate structures, and security implications
 5. **Cloud hosting** - Deploying applications to Cloudflare Workers
+6. **API Authentication** - Bearer tokens, environment variables, secrets management
 
 ## Architecture
 
 **Cloudflare Workers (Current - Live)**
 
 ```
-┌─────────────────┐      ┌─────────────────────────────────────┐
-│   User's        │      │   Cloudflare Edge Network           │
-│   Browser       │─────▶│   (300+ locations worldwide)        │
-│                 │      │                                     │
-└─────────────────┘      │   TypeScript Worker                 │
-                         │   - Handles HTTP requests           │
-                         │   - Fetches from crt.sh             │
+┌─────────────────┐      ┌─────────────────────────────────────┐      ┌─────────────────┐
+│   User's        │      │   Cloudflare Edge Network           │      │   CTSentry API  │
+│   Browser       │─────▶│   (300+ locations worldwide)        │─────▶│   query.ctsn.dev│
+│                 │      │                                     │      │                 │
+└─────────────────┘      │   TypeScript Worker                 │      │   (Friend's CT  │
+                         │   - Handles HTTP requests           │      │    database)    │
+                         │   - Fetches from CTSentry (POST)    │      └─────────────────┘
+                         │   - Bearer token authentication     │
                          │   - Returns HTML responses          │
                          └─────────────────────────────────────┘
 ```
@@ -54,6 +56,11 @@ A web application that allows users to search for SSL/TLS certificates issued fo
    - "Expand All" / "Collapse All" buttons
    - Loading spinner during search
    - Responsive design
+6. **Rich Certificate Data** (via CTSentry API):
+   - Public key algorithm and size (e.g., "RSA 2048-bit", "ECDSA P-256")
+   - All DNS names displayed as styled tags
+   - CT log source information (which log recorded the entry)
+   - Truncation warning if results exceed 9999 entries
 
 ## Tech Stack
 
@@ -69,16 +76,26 @@ A web application that allows users to search for SSL/TLS certificates issued fo
 - **Templates**: Go html/template
 
 ### Shared
-- **Data Source**: crt.sh (free Certificate Transparency log search API)
+- **Data Source**: CTSentry API (friend's Certificate Transparency database)
 
 ## API Data Source
 
-**crt.sh** - A free web interface to Certificate Transparency logs
-- Website: https://crt.sh
-- API endpoint: `https://crt.sh/?q=DOMAIN&output=json`
-- No authentication required
-- Returns JSON array of certificate records
-- Note: Can be slow (timeout set to 120 seconds)
+**CTSentry** - A private Certificate Transparency log aggregation API
+- API endpoint: `https://query.ctsn.dev/query`
+- **Authentication**: Bearer token required (stored in environment variable)
+- **Method**: POST with JSON body `{ "q": "domain.com" }`
+- Returns JSON with certificates pre-grouped by QID (unique fingerprint)
+- **Key features**:
+  - Data already grouped by certificate (no serial number deduplication needed)
+  - `cert[0]` is guaranteed to be the leaf certificate
+  - Rich structured data (public key info, all SANs, CT log details)
+  - Truncates at 9999 entries with `truncated: true` flag
+  - **Wildcard TLD search**: Use `**.domain.com` to find all certs ending with `.domain.com`
+  - Note: Very broad wildcard queries (e.g., `**.workers.dev`) may timeout due to Cloudflare Workers' 50ms CPU limit on free tier
+
+**Previous API (deprecated)**: crt.sh
+- Was used before switching to CTSentry
+- Code still exists in `certificates.ts` but is no longer called
 
 ## Project Structure
 
@@ -98,9 +115,10 @@ tsl-certificates-work/
 │
 └── workers/                     # TypeScript Version (LIVE at certs.jonisgett.dev)
     ├── src/
-    │   ├── index.ts             # HTTP request routing
-    │   ├── certificates.ts      # Certificate fetching & grouping
-    │   └── templates.ts         # HTML template functions
+    │   ├── index.ts             # HTTP request routing + env var handling
+    │   ├── certificates.ts      # CTSentry API types, fetching & processing
+    │   └── templates.ts         # HTML template functions for CTSentry data
+    ├── .dev.vars                # Local env vars (GITIGNORED - contains Bearer token)
     ├── wrangler.jsonc           # Cloudflare Workers config
     ├── package.json             # Node.js dependencies
     └── tsconfig.json            # TypeScript config
@@ -125,6 +143,8 @@ tsl-certificates-work/
 - **Map** - JavaScript Map for grouping (`new Map<string, T>()`)
 - **Array methods** - `.map()`, `.filter()`, `.sort()`, `.forEach()`
 - **Template literals** - Multiline strings with `${variable}` interpolation
+- **Object.entries()** - Iterating over object key-value pairs
+- **Optional chaining** - Safe property access (`cert?.issuer?.common_name`)
 
 ### Cloudflare Workers Concepts
 - **Edge computing** - Code runs in 300+ data centers worldwide
@@ -132,6 +152,9 @@ tsl-certificates-work/
 - **Response object** - Creating HTTP responses
 - **Wrangler** - CLI tool for development and deployment
 - **Custom domains** - Routing traffic to Workers
+- **Environment variables** - `Env` interface for typed access to secrets
+- **.dev.vars** - Local development secrets (gitignored)
+- **wrangler secret** - Production secrets management
 
 ### Web Concepts
 - **HTML templates** - Go's template syntax vs TypeScript template literals
@@ -146,6 +169,14 @@ tsl-certificates-work/
 - **Issuer** - Certificate Authority that issued the cert (e.g., Let's Encrypt)
 - **Validity Period** - NotBefore and NotAfter dates
 - **Subject Alternative Names (SANs)** - Domains covered by the cert
+- **QID** - SHA256 hash used by CTSentry to group related certificates
+- **CT Logs** - Append-only public logs (e.g., Google Xenon, Cloudflare Nimbus)
+- **Public Key Types** - RSA (2048/4096-bit) vs ECDSA (P-256/P-384 curves)
+
+### API Authentication Concepts
+- **Bearer Token** - Authentication token sent in HTTP Authorization header
+- **Environment Variables** - Keeping secrets out of source code
+- **Secrets Management** - Local (.dev.vars) vs production (wrangler secret)
 
 ## Development Phases
 
@@ -183,6 +214,15 @@ tsl-certificates-work/
 - [x] Configure custom domain (certs.jonisgett.dev)
 - [x] Deploy to Cloudflare Workers
 
+### Phase 6: CTSentry Integration - COMPLETE
+- [x] Add CTSentry API TypeScript interfaces (14 types)
+- [x] Implement `fetchFromCTSentry()` with Bearer token auth
+- [x] Create data processing functions for CTSentry response format
+- [x] Build new template rendering functions for richer data
+- [x] Set up environment variables for secrets management
+- [x] Add .dev.vars to .gitignore
+- [x] Deploy with production secret via `wrangler secret`
+
 ## Useful Commands
 
 ### Go (Local Development)
@@ -199,12 +239,16 @@ go build -o certificate-viewer
 # Navigate to workers directory
 cd workers
 
-# Start local dev server
+# Start local dev server (reads .dev.vars for secrets)
 npx wrangler dev
 
 # Deploy to production
 export CLOUDFLARE_API_TOKEN="your-token"
 npx wrangler deploy
+
+# Set production secret (one-time, or when token changes)
+npx wrangler secret put CTSENTRY_BEARER_TOKEN
+# Then paste the token when prompted
 
 # View live logs
 npx wrangler tail
@@ -222,8 +266,10 @@ git push origin main
 - [TypeScript Documentation](https://www.typescriptlang.org/docs/)
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+- [Cloudflare Workers Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [Certificate Transparency Overview](https://certificate.transparency.dev/)
-- [crt.sh](https://crt.sh/)
+- [CTSentry API](https://query.ctsn.dev) - Friend's CT log aggregation API
+- [crt.sh](https://crt.sh/) - Public CT log search (previously used)
 
 ## Notes
 
@@ -231,17 +277,25 @@ git push origin main
 - CT = Certificate Transparency
 - CT logs are append-only public logs of all issued certificates
 - Certificates must be logged to be trusted by browsers (since 2018)
-- crt.sh can be slow for large domains - consider adding pagination in future
+- CTSentry aggregates data from multiple CT logs into a single queryable database
+- QID = SHA256 hash of the certificate's TBSCertificate, used to group related entries
+- Bearer tokens should NEVER be committed to git - use environment variables
 
 ## Future Improvements
 
-- [ ] Add pagination for large result sets
-- [ ] Strip "www." from domain input automatically
-- [ ] Add ability to view full certificate details
+- [ ] Add ability to view full certificate details (click to expand)
 - [ ] Export results to CSV/JSON
 - [ ] Add fraud detection indicators (for friend's project)
 - [ ] Add caching with Cloudflare KV storage
+- [ ] Display more CTSentry data (OCSP servers, CRL distribution points)
+- [ ] Add wildcard certificate detection/highlighting
 
 ## Current Status
 
-**All Phases Complete** - Application is live at https://certs.jonisgett.dev
+**Phase 6 Complete** - Application is live at https://certs.jonisgett.dev using CTSentry API
+
+## Environment Variables
+
+| Variable | Description | Local | Production |
+|----------|-------------|-------|------------|
+| `CTSENTRY_BEARER_TOKEN` | API authentication token | `.dev.vars` | `wrangler secret` |
